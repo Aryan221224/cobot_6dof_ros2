@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>cobot_description</name>
+  <version>1.0.0</version>
+  <description>URDF, RViz config and launch files for the 6-DOF Teleoperated Precision Cobot with Dual-Mode End Effector.</description>
+  <maintainer email="aryan@bennettuniversity.edu.in">Aryan</maintainer>
+  <license>MIT</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>urdf</depend>
+  <depend>xacro</depend>
+  <depend>robot_state_publisher</depend>
+  <depend>joint_state_publisher</depend>
+  <depend>joint_state_publisher_gui</depend>
+  <depend>rviz2</depend>
+  <depend>ros2_control</depend>
+  <depend>ros2_controllers</depend>
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
