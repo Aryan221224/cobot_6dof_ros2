@@ -1,0 +1,423 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="cobot_6dof">
+
+  <!-- ============================================================
+       6-DOF Teleoperated Precision Cobot
+       Designed for: Articulus Surgical / Integra Robotics showcase
+       Author: Aryan | Bennett University R&D
+       DOF: 6 | Reach: ~800mm | Payload: 1-2 kg | Repeat: ±1mm
+       ============================================================ -->
+
+  <xacro:include filename="$(find cobot_description)/urdf/materials.xacro"/>
+
+  <!-- ============================================================
+       PROPERTIES — DH-derived link lengths and geometry
+       ============================================================ -->
+  <xacro:property name="PI" value="3.14159265358979"/>
+
+  <!-- Link lengths (metres) -->
+  <xacro:property name="base_height"     value="0.100"/>
+  <xacro:property name="base_radius"     value="0.080"/>
+  <xacro:property name="link1_length"    value="0.200"/>  <!-- Shoulder -->
+  <xacro:property name="link1_radius"    value="0.045"/>
+  <xacro:property name="link2_length"    value="0.300"/>  <!-- Upper arm -->
+  <xacro:property name="link2_radius"    value="0.040"/>
+  <xacro:property name="link3_length"    value="0.250"/>  <!-- Forearm -->
+  <xacro:property name="link3_radius"    value="0.035"/>
+  <xacro:property name="link4_length"    value="0.100"/>  <!-- Wrist 1 -->
+  <xacro:property name="link4_radius"    value="0.030"/>
+  <xacro:property name="link5_length"    value="0.090"/>  <!-- Wrist 2 -->
+  <xacro:property name="link5_radius"    value="0.028"/>
+  <xacro:property name="link6_length"    value="0.070"/>  <!-- Tool flange -->
+  <xacro:property name="link6_radius"    value="0.025"/>
+
+  <!-- Joint limits (radians) -->
+  <xacro:property name="j1_limit"  value="3.14159"/>   <!-- ±180° base rotation -->
+  <xacro:property name="j2_limit"  value="2.35619"/>   <!-- ±135° shoulder -->
+  <xacro:property name="j3_limit"  value="2.61799"/>   <!-- ±150° elbow -->
+  <xacro:property name="j4_limit"  value="3.14159"/>   <!-- ±180° wrist roll -->
+  <xacro:property name="j5_limit"  value="2.09440"/>   <!-- ±120° wrist pitch -->
+  <xacro:property name="j6_limit"  value="3.14159"/>   <!-- ±180° tool rotation -->
+
+  <!-- Effort and velocity limits -->
+  <xacro:property name="j1_effort"   value="150.0"/>
+  <xacro:property name="j2_effort"   value="150.0"/>
+  <xacro:property name="j3_effort"   value="100.0"/>
+  <xacro:property name="j4_effort"   value="50.0"/>
+  <xacro:property name="j5_effort"   value="50.0"/>
+  <xacro:property name="j6_effort"   value="30.0"/>
+  <xacro:property name="base_vel"    value="1.57"/>    <!-- rad/s -->
+  <xacro:property name="wrist_vel"   value="3.14"/>
+
+  <!-- ============================================================
+       LINK MACRO — parametric hollow cylindrical link
+       ============================================================ -->
+  <xacro:macro name="cobot_link" params="name length radius mass color">
+    <link name="${name}">
+      <visual>
+        <origin xyz="0 0 ${length/2}" rpy="0 0 0"/>
+        <geometry>
+          <cylinder length="${length}" radius="${radius}"/>
+        </geometry>
+        <material name="${color}"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 ${length/2}" rpy="0 0 0"/>
+        <geometry>
+          <cylinder length="${length}" radius="${radius}"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <origin xyz="0 0 ${length/2}" rpy="0 0 0"/>
+        <mass value="${mass}"/>
+        <!-- Hollow cylinder inertia approximation -->
+        <inertia
+          ixx="${mass*(3*radius*radius + length*length)/12}"
+          iyy="${mass*(3*radius*radius + length*length)/12}"
+          izz="${mass*radius*radius/2}"
+          ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+    </link>
+  </xacro:macro>
+
+  <!-- Joint cap sphere (visual only, for aesthetics at joints) -->
+  <xacro:macro name="joint_sphere" params="name radius color">
+    <link name="${name}">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry><sphere radius="${radius}"/></geometry>
+        <material name="${color}"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry><sphere radius="${radius}"/></geometry>
+      </collision>
+      <inertial>
+        <mass value="0.05"/>
+        <inertia ixx="0.0001" iyy="0.0001" izz="0.0001" ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+    </link>
+  </xacro:macro>
+
+  <!-- ============================================================
+       WORLD / BASE
+       ============================================================ -->
+  <link name="world"/>
+
+  <joint name="world_to_base" type="fixed">
+    <parent link="world"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Base plate -->
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 ${base_height/2}" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="${base_height}" radius="${base_radius}"/>
+      </geometry>
+      <material name="dark_grey"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 ${base_height/2}" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="${base_height}" radius="${base_radius}"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 ${base_height/2}" rpy="0 0 0"/>
+      <mass value="3.5"/>
+      <inertia ixx="0.0180" iyy="0.0180" izz="0.0320" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+  </link>
+
+  <!-- ============================================================
+       J1 — Base Rotation (Z-axis)
+       ============================================================ -->
+  <joint name="joint_1" type="revolute">
+    <parent link="base_link"/>
+    <child link="link_1"/>
+    <origin xyz="0 0 ${base_height}" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="${-j1_limit}" upper="${j1_limit}" effort="${j1_effort}" velocity="${base_vel}"/>
+    <dynamics damping="0.5" friction="0.1"/>
+  </joint>
+
+  <xacro:cobot_link name="link_1" length="${link1_length}" radius="${link1_radius}" mass="1.8" color="cobot_blue"/>
+
+  <!-- J1 joint cap -->
+  <joint name="j1_cap_joint" type="fixed">
+    <parent link="link_1"/>
+    <child link="j1_cap"/>
+    <origin xyz="0 0 ${link1_length}" rpy="0 0 0"/>
+  </joint>
+  <xacro:joint_sphere name="j1_cap" radius="0.048" color="cobot_silver"/>
+
+  <!-- ============================================================
+       J2 — Shoulder Lift (Y-axis)
+       ============================================================ -->
+  <joint name="joint_2" type="revolute">
+    <parent link="j1_cap"/>
+    <child link="link_2"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="${-j2_limit}" upper="${j2_limit}" effort="${j2_effort}" velocity="${base_vel}"/>
+    <dynamics damping="0.5" friction="0.1"/>
+  </joint>
+
+  <xacro:cobot_link name="link_2" length="${link2_length}" radius="${link2_radius}" mass="1.5" color="cobot_blue"/>
+
+  <joint name="j2_cap_joint" type="fixed">
+    <parent link="link_2"/>
+    <child link="j2_cap"/>
+    <origin xyz="0 0 ${link2_length}" rpy="0 0 0"/>
+  </joint>
+  <xacro:joint_sphere name="j2_cap" radius="0.043" color="cobot_silver"/>
+
+  <!-- ============================================================
+       J3 — Elbow (Y-axis)
+       ============================================================ -->
+  <joint name="joint_3" type="revolute">
+    <parent link="j2_cap"/>
+    <child link="link_3"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="${-j3_limit}" upper="${j3_limit}" effort="${j3_effort}" velocity="${base_vel}"/>
+    <dynamics damping="0.3" friction="0.08"/>
+  </joint>
+
+  <xacro:cobot_link name="link_3" length="${link3_length}" radius="${link3_radius}" mass="1.2" color="cobot_blue"/>
+
+  <joint name="j3_cap_joint" type="fixed">
+    <parent link="link_3"/>
+    <child link="j3_cap"/>
+    <origin xyz="0 0 ${link3_length}" rpy="0 0 0"/>
+  </joint>
+  <xacro:joint_sphere name="j3_cap" radius="0.038" color="cobot_silver"/>
+
+  <!-- ============================================================
+       J4 — Wrist Roll (X-axis)
+       ============================================================ -->
+  <joint name="joint_4" type="revolute">
+    <parent link="j3_cap"/>
+    <child link="link_4"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="${-j4_limit}" upper="${j4_limit}" effort="${j4_effort}" velocity="${wrist_vel}"/>
+    <dynamics damping="0.1" friction="0.05"/>
+  </joint>
+
+  <xacro:cobot_link name="link_4" length="${link4_length}" radius="${link4_radius}" mass="0.6" color="cobot_accent"/>
+
+  <joint name="j4_cap_joint" type="fixed">
+    <parent link="link_4"/>
+    <child link="j4_cap"/>
+    <origin xyz="0 0 ${link4_length}" rpy="0 0 0"/>
+  </joint>
+  <xacro:joint_sphere name="j4_cap" radius="0.032" color="cobot_silver"/>
+
+  <!-- ============================================================
+       J5 — Wrist Pitch (Y-axis)
+       ============================================================ -->
+  <joint name="joint_5" type="revolute">
+    <parent link="j4_cap"/>
+    <child link="link_5"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="${-j5_limit}" upper="${j5_limit}" effort="${j5_effort}" velocity="${wrist_vel}"/>
+    <dynamics damping="0.1" friction="0.05"/>
+  </joint>
+
+  <xacro:cobot_link name="link_5" length="${link5_length}" radius="${link5_radius}" mass="0.4" color="cobot_accent"/>
+
+  <joint name="j5_cap_joint" type="fixed">
+    <parent link="link_5"/>
+    <child link="j5_cap"/>
+    <origin xyz="0 0 ${link5_length}" rpy="0 0 0"/>
+  </joint>
+  <xacro:joint_sphere name="j5_cap" radius="0.030" color="cobot_silver"/>
+
+  <!-- ============================================================
+       J6 — Tool Rotation (Z-axis)
+       ============================================================ -->
+  <joint name="joint_6" type="revolute">
+    <parent link="j5_cap"/>
+    <child link="link_6"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="${-j6_limit}" upper="${j6_limit}" effort="${j6_effort}" velocity="${wrist_vel}"/>
+    <dynamics damping="0.05" friction="0.02"/>
+  </joint>
+
+  <xacro:cobot_link name="link_6" length="${link6_length}" radius="${link6_radius}" mass="0.2" color="cobot_accent"/>
+
+  <!-- Tool flange -->
+  <joint name="flange_joint" type="fixed">
+    <parent link="link_6"/>
+    <child link="tool_flange"/>
+    <origin xyz="0 0 ${link6_length}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="tool_flange">
+    <visual>
+      <origin xyz="0 0 0.005" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.010" radius="0.028"/>
+      </geometry>
+      <material name="cobot_silver"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.005" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.010" radius="0.028"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="0.00001" iyy="0.00001" izz="0.00001" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+  </link>
+
+  <!-- ============================================================
+       END EFFECTOR — include gripper + pipette assembly
+       ============================================================ -->
+  <xacro:include filename="$(find cobot_description)/urdf/end_effector.xacro"/>
+  <xacro:dual_end_effector parent="tool_flange"/>
+
+  <!-- ============================================================
+       TCP — Tool Centre Point frame
+       ============================================================ -->
+  <joint name="tcp_joint" type="fixed">
+    <parent link="tool_flange"/>
+    <child link="tcp"/>
+    <origin xyz="0 0 0.130" rpy="0 0 0"/>
+  </joint>
+
+  <link name="tcp">
+    <inertial>
+      <mass value="0.001"/>
+      <inertia ixx="0.000001" iyy="0.000001" izz="0.000001" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+  </link>
+
+  <!-- ============================================================
+       GAZEBO / ros2_control INTERFACE TAGS
+       ============================================================ -->
+  <!-- ============================================================
+       ros2_control — mock hardware with full state interfaces
+       Exposes: position + velocity + effort (torque sensing sim)
+       effort interface simulates inline torque sensor / current sense
+       ============================================================ -->
+  <ros2_control name="cobot_hardware" type="system">
+    <hardware>
+      <plugin>mock_components/GenericSystem</plugin>
+    </hardware>
+
+    <!-- J1 — Base rotation | Harmonic drive | 150 Nm -->
+    <joint name="joint_1">
+      <command_interface name="position"/>
+      <command_interface name="effort"><param name="min">-150</param><param name="max">150</param></command_interface>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- J2 — Shoulder lift | Harmonic drive | 150 Nm | gravity comp -->
+    <joint name="joint_2">
+      <command_interface name="position"/>
+      <command_interface name="effort"><param name="min">-150</param><param name="max">150</param></command_interface>
+      <state_interface name="position"><param name="initial_value">-0.785</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- J3 — Elbow | Harmonic drive | 100 Nm -->
+    <joint name="joint_3">
+      <command_interface name="position"/>
+      <command_interface name="effort"><param name="min">-100</param><param name="max">100</param></command_interface>
+      <state_interface name="position"><param name="initial_value">1.047</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- J4 — Wrist roll | Mini servo | 50 Nm -->
+    <joint name="joint_4">
+      <command_interface name="position"/>
+      <command_interface name="effort"><param name="min">-50</param><param name="max">50</param></command_interface>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- J5 — Wrist pitch | Mini servo | 50 Nm -->
+    <joint name="joint_5">
+      <command_interface name="position"/>
+      <command_interface name="effort"><param name="min">-50</param><param name="max">50</param></command_interface>
+      <state_interface name="position"><param name="initial_value">0.524</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- J6 — Tool rotation | Mini servo | 30 Nm -->
+    <joint name="joint_6">
+      <command_interface name="position"/>
+      <command_interface name="effort"><param name="min">-30</param><param name="max">30</param></command_interface>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- Gripper fingers — prismatic, position only -->
+    <joint name="gripper_left_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="gripper_right_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- Pipette plunger — prismatic, position + effort -->
+    <joint name="pipette_plunger_joint">
+      <command_interface name="position"/>
+      <command_interface name="effort"><param name="min">-5</param><param name="max">5</param></command_interface>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- Z-axis linear actuator — moves whole pipette up/down -->
+    <joint name="pipette_z_joint">
+      <command_interface name="position"/>
+      <command_interface name="effort"><param name="min">-10</param><param name="max">10</param></command_interface>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- Tip ejector collar — single-shot prismatic -->
+    <joint name="pipette_eject_joint">
+      <command_interface name="position"/>
+      <command_interface name="effort"><param name="min">-8</param><param name="max">8</param></command_interface>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- Surgical jaw — revolute, effort + position -->
+    <joint name="surgical_jaw_joint">
+      <command_interface name="position"/>
+      <command_interface name="effort"><param name="min">-5</param><param name="max">5</param></command_interface>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+  </ros2_control>
+
+</robot>
